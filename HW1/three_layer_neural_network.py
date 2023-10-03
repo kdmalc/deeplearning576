@@ -137,7 +137,6 @@ class NeuralNetwork(object):
         num_examples = len(X)
         self.feedforward(X, lambda x: self.actFun(x, type=self.actFun_type))
         # YOU IMPLEMENT YOUR CALCULATION OF THE LOSS HERE
-        num_classes = len(np.unique(y))
         y_onehot = OneHotEncoder(sparse_output=False).fit_transform(y.reshape((-1, 1)))
         data_loss = (-1/num_examples) * np.sum(np.log(self.probs) * y_onehot)
 
@@ -229,6 +228,7 @@ def main():
     plt.scatter(X[:, 0], X[:, 1], s=40, c=y, cmap=plt.cm.Spectral)
     plt.show()
 
+    # tanh, sigmoid, relu
     model = NeuralNetwork(nn_input_dim=2, nn_hidden_dim=3 , nn_output_dim=2, actFun_type='tanh')
     model.fit_model(X,y)
     model.visualize_decision_boundary(X,y)
