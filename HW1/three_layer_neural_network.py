@@ -84,6 +84,9 @@ class NeuralNetwork(object):
             z_out = 1 / (1 + np.exp(-z))
         elif type.lower()=='relu':
             z_out = np.maximum(0, z)
+        elif type.lower() == 'softmax': # Add softmax since this is what we are doing when we set self.probs
+            exp_scores = np.exp(z)
+            return exp_scores / exp_scores.sum(axis=1, keepdims=True)
         else:
             raise ValueError('That activation function type is not defined.')
 
@@ -104,6 +107,8 @@ class NeuralNetwork(object):
             z_out_prime = self.actFun(z, type)*(1 - self.actFun(z, type))
         elif type.lower()=='relu':
             z_out_prime = (z > 0).astype('float')
+        elif type.lower() == 'softmax':
+            return z
         else:
             raise ValueError('That activation function type is not defined.')
 

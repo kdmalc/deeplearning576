@@ -50,13 +50,16 @@ batch_size = 64
 test_batch_size = 1000
 epochs = 10
 lr = 0.01
-try_cuda = True
+try_cuda = True # I do not have cuda...
 seed = 1000
 logging_interval = 10 # how many batches to wait before logging
 logging_dir = None
 
 # 1) setting up the logging
-[inset-code: set up logging]
+#[inset-code: set up logging]
+if logging_dir is None:
+    logging_dir = os.path.join('runs', datetime.now().strftime('%b%d_%H-%M-%S'))
+writer = SummaryWriter(log_dir=logging_dir)
 
 #deciding whether to send to the cpu or not if available
 if torch.cuda.is_available() and try_cuda:
@@ -67,42 +70,73 @@ else:
     torch.manual_seed(seed)
 
 # Setting up data
-transform=transforms.Compose([
+given_transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.01307,), (0.3081,))
 ])
 
-train_loader = [inset-code]
-
-test_loader = [inset-code]
+# Both taken from the provided code at: https://github.com/motokimura/pytorch_tensorboard/blob/master/main.py
+#train_loader = [inset-code]
+train_loader = torch.utils.data.DataLoader(
+    datasets.MNIST(
+        'data', 
+        train=True, 
+        download=True,
+        transform=given_transform),
+    batch_size=batch_size, 
+    shuffle=True#, 
+   # **kwargs
+)
+#test_loader = [inset-code]
+test_loader = torch.utils.data.DataLoader(
+    datasets.MNIST(
+        'data', 
+        train=False, 
+        download=True,
+        transform=given_transform),
+    batch_size=test_batch_size, 
+    shuffle=True#, 
+    #**kwargs
+)
 
 # Defining Architecture,loss and optimizer
 class Net(nn.Module):
     def __init__(self):
 
         super(Net, self).__init__()
-        self.conv1 = [inset-code]
-        self.conv2 = [inset-code]
-        self.conv2_drop = [inset-code]
-        self.fc1 = [inset-code]
-        self.fc2 = [inset-code]
+        self.conv1 = nn.Conv2d(5, 5, kernel_size=1, stride=10)
+        self.conv2 = nn.Conv2d(5, 5, kernel_size=10, stride=20)
+        # Was this drop layer even specified in the instructions?
+        self.conv2_drop = nn.Dropout2d()
+        self.fc1 = nn.Linear(320, 50)
+        self.fc2 = nn.Linear(50, 10)
 
     def forward(self, x):
 
-        x = [inset-code]
-        x = [inset-code]
-        x = [inset-code]
-        x = [inset-code]
-        x = [inset-code]
-        x = [inset-code]
-        x = F.softmax(x,dim=1)
-
+        x = F.relu(F.max_pool2d(self.conv1(x), kernel_size=2, stride=2))
+        x = F.relu(F.max_pool2d(self.conv1(x), kernel_size=2, stride=2))
+        # The source code has this so I just kept it
+        x = x.view(-1, 320)
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.fc2(x)
+        x = F.softmax(x,dim=10)
+        '''We will have the last layer being a Softmax;
+        therefore, unlike the pytorch-mnist-guide
+        we will take the log of the output of our model
+        (using torch.log) and then use nn.NLLLoss()
+        for calculating the loss later in the training and testing loop
+        '''
         return x
 
-[inset-code: instantiate model]
+#[inset-code: instantiate model]
+# Setup the network 
+model = Net()
 
-optimizer = [inset-code: USE AN ADAM OPTIMIZER]
-
+#optimizer = [inset-code: USE AN ADAM OPTIMIZER]
+# Setup optimizer
+#optimizer = optim.SGD(model.parameters(), lr=lr)
+optimizer = optim.Adam(model.parameters(), lr=lr)
 
 # Defining the test and trainig loops
 eps=1e-13
@@ -110,21 +144,29 @@ eps=1e-13
 def train(epoch):
     model.train()
 
-    #criterion = nn.CrossEntropyLoss()
-    criterion = [inset-code]
+    #criterion = nn.CrossEntropyLoss() # This came commented out idk
+    criterion = nn.NLLLoss() 
 
     for batch_idx, (data, target) in enumerate(train_loader):
         if cuda:
             data, target = data.cuda(), target.cuda()
 
-        optimizer.[inset-code]
-        output = [inset-code]
+        optimizer.zero_grad()
+        output = model(data) # forward
         loss = criterion(torch.log(output+eps), target) # = sum_k(-t_k * log(y_k))
-        loss[inset-code]
-        optimizer[inset-code]
+        loss.backward()
+        optimizer.step()
 
         if batch_idx % logging_interval == 0:
-            [inset-code: print and log the performance]
+            #[inset-code: print and log the performance]
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_loader.dataset),
+                100. * batch_idx / len(train_loader), loss.data[0] )
+            )
+
+            # Log train/loss to TensorBoard at every iteration
+            n_iter = (epoch - 1) * len(train_loader) + batch_idx + 1
+            writer.add_scalar('train/loss', loss.data[0], n_iter)
 
     # Log model parameters to TensorBoard at every epoch
     for name, param in model.named_parameters():
@@ -152,20 +194,29 @@ def test(epoch):
         output = model(data)
 
         test_loss += criterion(torch.log(output+eps), target,).item() # sum up batch loss (later, averaged over all test samples)
-        pred = [inset-code] # get the index of the max log-probability
-        correct += [inset-code]
+        pred = output.data.max(1, keepdim=True)[1] # get the index of the max log-probability
+        correct += pred.eq(target.data.view_as(pred)).cpu().sum()
 
     test_loss /= len(test_loader.dataset)
     test_accuracy = 100. * correct / len(test_loader.dataset)
-    [inset-code: print the performance]
+    #[inset-code: print the performance]
+    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(
+        test_loss, correct, len(test_loader.dataset), test_accuracy)
+    )
 
     # Log test/loss and test/accuracy to TensorBoard at every epoch
     n_iter = epoch * len(train_loader)
-    [inset-code: log the performance]
+    #[inset-code: log the performance]
+    writer.add_scalar('test/loss', test_loss, n_iter)
+    writer.add_scalar('test/accuracy', test_accuracy, n_iter)
 
 # Training loop
 
-[inset-code: running test and training over epoch]
+#[inset-code: running test and training over epoch]
+# Start training
+for epoch in range(1, epochs + 1):
+    train(epoch)
+    test(epoch)
 
 writer.close()
 

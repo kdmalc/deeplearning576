@@ -38,19 +38,26 @@ class DeepNeuralNetwork(tlnn.NeuralNetwork):
         np.random.seed(seed)
         
         self.layers = []
-        self.layers.append(self.Layer(self, nn_input_dim, nn_hidden_dim, actFun_type))
+        # Passing in "self" (current neural network obj) so I can access activation funcs and such
+        # Set the 1st layer as input_dim x hidden_dim
+        self.layers.append(Layer(self, nn_input_dim, nn_hidden_dim, actFun_type))
+        # Set the middle layers as hidden_dim x hidden_dim
         for _ in range(n_layers - 3):
-            self.layers.append(self.Layer(self, nn_hidden_dim, nn_hidden_dim, actFun_type))
-        self.layers.append(self.Layer(self, nn_hidden_dim, nn_output_dim, 'softmax'))
+            self.layers.append(Layer(self, nn_hidden_dim, nn_hidden_dim, actFun_type))
+        # Set the last layer as hidden_dim x output_dim
+        self.layers.append(Layer(self, nn_hidden_dim, nn_output_dim, 'softmax'))
 
     def feedforward(self, X):
         # YOU IMPLEMENT YOUR feedforward HERE
         self.activations = []
         activation = X
+
         for layer in self.layers:
-            activation = layer.feedforward(activation)
+            layer.feedforward(activation) # Sets layer.a, AKA the resulting activation
+            activation = layer.a
             self.activations.append(activation)
         self.probs = activation
+
         return None
 
     def calculate_loss(self, X, y):
@@ -101,7 +108,7 @@ class DeepNeuralNetwork(tlnn.NeuralNetwork):
             self.backprop(X, y)
             
             for layer in self.layers:
-                layer.step(epsilon, self.reg_lambda)
+                layer.gradient_step(epsilon, self.reg_lambda)
 
             # Optionally print the loss.
             # This is expensive because it uses the whole dataset, so we don't want to do it too often.
@@ -118,9 +125,9 @@ class DeepNeuralNetwork(tlnn.NeuralNetwork):
         '''
         tlnn.plot_decision_boundary(lambda x: self.predict(x), X, y)
 
-class Layer():
-    def __init__(self, dnn_instance, nn_input_dim, nn_output_dim, actFun_type='tanh'):
-        self.dnn_instance = dnn_instance
+class Layer(object):
+    def __init__(self, neuralnet_obj, nn_input_dim, nn_output_dim, actFun_type='tanh'):
+        self.neuralnet_obj = neuralnet_obj
         self.nn_input_dim = nn_input_dim
         self.nn_output_dim = nn_output_dim
         self.actFun_type = actFun_type
@@ -131,7 +138,10 @@ class Layer():
     # Implement feedforward for a single layer
     def feedforward(self, X):
         self.z = X@self.W + self.b
-        self.a = self.dnn_instance.actFun(self.z, self.actFun_type)
+        self.a = self.neuralnet_obj.actFun(self.z, self.actFun_type)
+        #self.z = X.dot(self.W) + self.b
+        #self.a = self.dnn_instance.actFun(self.z, self.actFun_type)
+        #return self.a
         return None
     
     # Implement backprop for a single layer
@@ -140,7 +150,7 @@ class Layer():
         # a is the actual activation
         # W, b are the weights and biases
         if dz is None:
-            self.dz = self.dnn_instance.diff_actFun(self.z, self.actFun_type) * da
+            self.dz = self.neuralnet_obj.diff_actFun(self.z, self.actFun_type) * da
         else:
             self.dz = dz
         self.dW = a_previous.T.dot(self.dz)
@@ -148,7 +158,7 @@ class Layer():
         da_previous = self.dz.dot(self.W.T)
         return da_previous
                                             
-    def update_weights(self, epsilon, reg_lambda):
+    def gradient_step(self, epsilon, reg_lambda):
         self.dW += reg_lambda * self.W
         self.W -= epsilon * self.dW
         self.b -= epsilon * self.db
@@ -157,8 +167,8 @@ class Layer():
 if __name__ == "__main__":
     # generate and visualize Make-Moons dataset
     X, y = tlnn.generate_data()
-    plt.scatter(X[:, 0], X[:, 1], s=40, c=y, cmap=plt.cm.Spectral)
-    plt.show()
+    #plt.scatter(X[:, 0], X[:, 1], s=40, c=y, cmap=plt.cm.Spectral)
+    #plt.show()
 
     actFun_type = 'tanh' #sigmoid, relu
     hidden_neurons_per_layer = 10
@@ -166,5 +176,5 @@ if __name__ == "__main__":
 
     deep_model_tanh_5_10 = DeepNeuralNetwork(nn_input_dim=2, nn_hidden_dim=hidden_neurons_per_layer, nn_output_dim=2, n_layers=num_layers, actFun_type=actFun_type)
     deep_model_tanh_5_10.fit_model(X, y, num_passes=10000)
-    plt.title(f'{actFun_type}, {n_layers} layers of size {nn_hidden_dim}') 
+    plt.title(f'{actFun_type}, {num_layers} layers of size {hidden_neurons_per_layer}') 
     deep_model_tanh_5_10.visualize_decision_boundary(X,y)
