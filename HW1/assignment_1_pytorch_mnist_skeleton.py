@@ -40,6 +40,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
+import torch.nn.init as init
 
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
@@ -48,23 +49,27 @@ from pathlib import Path
 
 batch_size = 64
 test_batch_size = 1000
-epochs = 10
+epochs = 7
 lr = 0.01
 try_cuda = True # I do not have cuda...
 seed = 1000
+# Initialize the random seed
 logging_interval = 10 # how many batches to wait before logging
-logging_dir = None
+exact_folder = r"\Run5_RMSProp"
+logging_dir = r"C:\Users\kdmen\Desktop\Fall23\ELEC576\HW1\results" + exact_folder
 
 # 1) setting up the logging
 #[inset-code: set up logging]
 if logging_dir is None:
     logging_dir = os.path.join('runs', datetime.now().strftime('%b%d_%H-%M-%S'))
+else:
+    logging_dir = os.path.join(logging_dir, datetime.now().strftime('%b%d_%H-%M-%S'))
 writer = SummaryWriter(log_dir=logging_dir)
 
 #deciding whether to send to the cpu or not if available
 if torch.cuda.is_available() and try_cuda:
     cuda = True
-    torch.cuda.mnaual_seed(seed)
+    torch.cuda.manual_seed(seed)
 else:
     cuda = False
     torch.manual_seed(seed)
@@ -84,8 +89,7 @@ train_loader = torch.utils.data.DataLoader(
         download=True,
         transform=given_transform),
     batch_size=batch_size, 
-    shuffle=True#, 
-   # **kwargs
+    shuffle=True
 )
 #test_loader = [inset-code]
 test_loader = torch.utils.data.DataLoader(
@@ -95,38 +99,38 @@ test_loader = torch.utils.data.DataLoader(
         download=True,
         transform=given_transform),
     batch_size=test_batch_size, 
-    shuffle=True#, 
-    #**kwargs
+    shuffle=True
 )
 
-# Defining Architecture,loss and optimizer
+# Defining Architecture, loss, and optimizer
 class Net(nn.Module):
     def __init__(self):
-
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(5, 5, kernel_size=1, stride=10)
-        self.conv2 = nn.Conv2d(5, 5, kernel_size=10, stride=20)
-        # Was this drop layer even specified in the instructions?
+        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
         self.fc1 = nn.Linear(320, 50)
         self.fc2 = nn.Linear(50, 10)
 
-    def forward(self, x):
+        self.use_Xavier = False
 
-        x = F.relu(F.max_pool2d(self.conv1(x), kernel_size=2, stride=2))
-        x = F.relu(F.max_pool2d(self.conv1(x), kernel_size=2, stride=2))
-        # The source code has this so I just kept it
+        # Initialize the weights using Xavier initialization
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        if self.use_Xavier:
+            for m in self.modules():
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                    init.xavier_normal_(m.weight)
+
+    def forward(self, x):
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
         x = x.view(-1, 320)
         x = F.relu(self.fc1(x))
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.fc2(x)
-        x = F.softmax(x,dim=10)
-        '''We will have the last layer being a Softmax;
-        therefore, unlike the pytorch-mnist-guide
-        we will take the log of the output of our model
-        (using torch.log) and then use nn.NLLLoss()
-        for calculating the loss later in the training and testing loop
-        '''
+        x = F.softmax(x,dim=1) #Dimension out of range (expected to be in range of [-2, 1], but got 10)
         return x
 
 #[inset-code: instantiate model]
@@ -135,8 +139,11 @@ model = Net()
 
 #optimizer = [inset-code: USE AN ADAM OPTIMIZER]
 # Setup optimizer
-#optimizer = optim.SGD(model.parameters(), lr=lr)
-optimizer = optim.Adam(model.parameters(), lr=lr)
+#optimizer = optim.SGD(model.parameters(), lr=lr) #weight_decay=0.001 #momentum
+#optimizer = optim.Adam(model.parameters(), lr=lr)
+#optimizer = optim.Adagrad(model.parameters(), lr=lr)
+#optimizer = optim.Adadelta(model.parameters(), lr=lr)
+optimizer = optim.RMSprop(model.parameters(), lr=lr)#, weight_decay=0.001, momentum=0.9)
 
 # Defining the test and trainig loops
 eps=1e-13
@@ -144,7 +151,6 @@ eps=1e-13
 def train(epoch):
     model.train()
 
-    #criterion = nn.CrossEntropyLoss() # This came commented out idk
     criterion = nn.NLLLoss() 
 
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -161,30 +167,34 @@ def train(epoch):
             #[inset-code: print and log the performance]
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.data[0] )
+                100. * batch_idx / len(train_loader), loss.data.item() ) #loss.data[0]
             )
 
             # Log train/loss to TensorBoard at every iteration
             n_iter = (epoch - 1) * len(train_loader) + batch_idx + 1
-            writer.add_scalar('train/loss', loss.data[0], n_iter)
-
-    # Log model parameters to TensorBoard at every epoch
-    for name, param in model.named_parameters():
-        layer, attr = os.path.splitext(name)
-        attr = attr[1:]
-        writer.add_histogram(
-            f'{layer}/{attr}',
-            param.clone().cpu().data.numpy(),
-            n_iter)
-
+            writer.add_scalar('train/loss', loss.data.item(), n_iter) #loss.data[0]
+        if batch_idx % 100 == 0:
+            n_iter = (epoch - 1) * len(train_loader) + batch_idx + 1
+            # Compute statistics
+            for name, param in model.named_parameters():
+                #if 'weight' in name:
+                writer.add_scalar(f'{name}/std', param.std(), n_iter)
+                writer.add_scalar(f'{name}/min', param.min(), n_iter)
+                writer.add_scalar(f'{name}/max', param.max(), n_iter)
+                # Histogram
+                if 'weight' in name:
+                    layer, attr = os.path.splitext(name)
+                    attr = attr[1:]
+                    writer.add_histogram(
+                        f'{layer}/{attr}',
+                        param.clone().cpu().data.numpy(),
+                        n_iter)
 
 
 def test(epoch):
     model.eval()
     test_loss = 0
     correct = 0
-    #criterion = nn.CrossEntropyLoss()
-    #criterion = nn.CrossEntropyLoss(size_average = False)
     criterion = nn.NLLLoss(size_average = False)
 
     for data, target in test_loader:
@@ -226,7 +236,6 @@ writer.close()
 
 #seems to be working in firefox when not working in Google Chrome when running in Colab
 #https://stackoverflow.com/questions/64218755/getting-error-403-in-google-colab-with-tensorboard-with-firefox
-
 
 # %load_ext tensorboard
 # %tensorboard --logdir [dir]
