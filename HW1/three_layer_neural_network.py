@@ -172,14 +172,13 @@ class NeuralNetwork(object):
         delta3[range(num_examples), y] -= 1
 
         # dW2 = dL/dW2
-        dW2 = np.dot(self.a1.T, delta3)
+        dW2 = self.a1.T @ delta3
         # db2 = dL/db2
         db2 = np.sum(delta3, axis=0, keepdims=True)
         # Need to find delta2 for earlier layer
-        diff = self.diff_actFun(self.z1, type=self.actFun_type) # Should z1 be a1?
-        delta2 = np.dot(delta3, self.W2.T) * diff
+        delta2 = (delta3 @ self.W2.T) * self.diff_actFun(self.z1, type=self.actFun_type)
         # dW1 = dL/dW1
-        dW1 = np.dot(X.T, delta2)
+        dW1 = X.T @ delta2
         # db1 = dL/db1
         db1 = np.sum(delta2, axis=0) #, keepdims=False
 
@@ -201,7 +200,7 @@ class NeuralNetwork(object):
             # Backpropagation
             dW1, dW2, db1, db2 = self.backprop(X, y)
 
-            # Add regularization terms (b1 and b2 don't have regularization terms)
+            # Add regularization terms
             dW2 += self.reg_lambda * self.W2
             dW1 += self.reg_lambda * self.W1
 

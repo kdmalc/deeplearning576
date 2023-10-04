@@ -51,11 +51,11 @@ batch_size = 64
 test_batch_size = 1000
 epochs = 7
 lr = 0.01
-try_cuda = True # I do not have cuda...
+try_cuda = False # I do not have cuda...
 seed = 1000
 # Initialize the random seed
 logging_interval = 10 # how many batches to wait before logging
-exact_folder = r"\Run5_RMSProp"
+exact_folder = r"\RunX"
 logging_dir = r"C:\Users\kdmen\Desktop\Fall23\ELEC576\HW1\results" + exact_folder
 
 # 1) setting up the logging
@@ -139,11 +139,11 @@ model = Net()
 
 #optimizer = [inset-code: USE AN ADAM OPTIMIZER]
 # Setup optimizer
-#optimizer = optim.SGD(model.parameters(), lr=lr) #weight_decay=0.001 #momentum
-#optimizer = optim.Adam(model.parameters(), lr=lr)
+#optimizer = optim.SGD(model.parameters(), lr=lr) #weight_decay=0.001
+optimizer = optim.Adam(model.parameters(), lr=lr)
 #optimizer = optim.Adagrad(model.parameters(), lr=lr)
 #optimizer = optim.Adadelta(model.parameters(), lr=lr)
-optimizer = optim.RMSprop(model.parameters(), lr=lr)#, weight_decay=0.001, momentum=0.9)
+#optimizer = optim.RMSprop(model.parameters(), lr=lr)#, weight_decay=0.001, momentum=0.9)
 
 # Defining the test and trainig loops
 eps=1e-13
